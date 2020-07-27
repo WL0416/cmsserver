@@ -42,22 +42,29 @@ const convertDate = (date) => {
   return timeArray[2] + "/" + timeArray[1] + "/" + timeArray[0];
 };
 
-router.get("/", (req, res) => {
-  const file = path.resolve(__dirname, "../templates/test.xlsx");
-  res.download(file);
+const deleteFile = (file) => {
+  fs.unlink(file, (err) => {
+    if (err) {
+      console.error(err.toString());
+    } else {
+      console.warn(file + " deleted");
+    }
+  });
+};
+
+router.get("/:passport.:code", (req, res) => {
+  const { passport, code } = req.params;
+  const file = path.resolve(__dirname, `../templates/${passport}@${code}.docx`);
+  res.send(file);
 });
 
 router.post("/", (req, res) => {
   let data = req.body;
   const birthday = convertDate(data.birthday);
-  const start = convertDate(data.start);
-  const end = convertDate(data.end);
 
   data = {
     ...data,
     birthday,
-    start,
-    end,
   };
 
   //Load the docx file as a binary
@@ -89,16 +96,17 @@ router.post("/", (req, res) => {
 
   var buf = doc.getZip().generate({ type: "nodebuffer" });
 
-  // buf is a nodejs buffer, you can either write it to a file or do anything else with it.
-  fs.writeFileSync(
-    path.resolve(__dirname, `../templates/${data.passport}.docx`),
-    buf
+  const file = path.resolve(
+    __dirname,
+    `../templates/${data.firstName}${data.lastName}@${data.code}.docx`
   );
 
-  //   res.send(path.resolve(__dirname, "../templates/output.docx"));
-  //   const file = path.resolve(__dirname, "../templates/output.docx");
-  //   res.download(file);
-  res.send(path.resolve(__dirname, "../templates/output.docx"));
+  // buf is a nodejs buffer, you can either write it to a file or do anything else with it.
+  fs.writeFileSync(file, buf);
+
+  setTimeout(() => deleteFile(file), 60000);
+
+  res.send(file);
 });
 
 module.exports = router;
