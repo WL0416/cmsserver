@@ -4,11 +4,10 @@ const Docxtemplater = require("docxtemplater");
 const fs = require("fs");
 const path = require("path");
 const cors = require("cors");
-const compressing = require("compressing");
 
 const { Storage } = require("@google-cloud/storage");
 const storage = new Storage();
-const srcBucket = "newton-melbourne";
+const srcBucket = "csmserver.appspot.com";
 
 const router = express.Router();
 
@@ -128,18 +127,15 @@ router.post("/", (req, res) => {
     errorHandler(error);
   }
 
-  var buf = doc.getZip().generate({ type: "nodebuffer" });
+  const buf = doc.getZip().generate({ type: "nodebuffer" });
 
   const fileName = `${data.firstName}${data.lastName}@${data.code}.docx`;
 
-  const file = path.resolve(__dirname, `../templates/${fileName}`);
-
-  // buf is a nodejs buffer, you can either write it to a file or do anything else with it.
-  fs.writeFileSync(file, buf);
-
   const remoteFile = storage.bucket(srcBucket).file(`outputs/${fileName}`);
 
-  fs.createReadStream(file)
+  fs.writeFileSync(`/tmp/${fileName}`, buf);
+
+  fs.createReadStream(`/tmp/${fileName}`)
     .pipe(remoteFile.createWriteStream())
     .on("error", (err) => {
       console.log(err);
@@ -148,10 +144,10 @@ router.post("/", (req, res) => {
     .on("finish", () => {
       console.log("finish!");
       res.send(
-        `https://storage.googleapis.com/newton-melbourne/outputs/${fileName}`
+        `https://storage.googleapis.com/${srcBucket}/outputs/${fileName}`
       );
       setTimeout(() => {
-        deleteFile(file);
+        deleteFile(`/tmp/${fileName}`);
         deleteRemotefile(fileName);
       }, 30000);
     });
