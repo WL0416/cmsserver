@@ -6,6 +6,10 @@ const path = require("path");
 const cors = require("cors");
 const compressing = require("compressing");
 
+const { Storage } = require("@google-cloud/storage");
+const storage = new Storage();
+const srcBucket = "newton-melbourne";
+
 const router = express.Router();
 
 router.use(cors());
@@ -52,9 +56,39 @@ const deleteFile = (file) => {
   });
 };
 
-router.get("/:passport.:code", (req, res) => {
-  const { passport, code } = req.params;
-  const file = path.resolve(__dirname, `../templates/${passport}@${code}.docx`);
+const deleteRemotefile = async (filename) => {
+  // Deletes the file from the bucket
+  await storage.bucket(srcBucket).file(`outputs/${filename}`).delete();
+
+  console.log(`gs://${srcBucket}/outputs/${filename} deleted.`);
+};
+
+async function listBuckets() {
+  try {
+    const results = await storage.getBuckets();
+
+    const [buckets] = results;
+
+    console.log("Buckets:");
+    buckets.forEach((bucket) => {
+      console.log(bucket.name);
+    });
+  } catch (err) {
+    console.error("ERROR:", err);
+  }
+}
+
+router.get("/", (req, res) => {
+  const file = path.resolve(__dirname, "../templates/input1.docx");
+  const remoteFile = storage.bucket(srcBucket).file("outputs/output.docx");
+  fs.createReadStream(file)
+    .pipe(remoteFile.createWriteStream())
+    .on("error", (err) => {
+      console.log(err);
+    })
+    .on("finish", () => {
+      console.log("finish!");
+    });
   res.send(file);
 });
 
@@ -96,17 +130,31 @@ router.post("/", (req, res) => {
 
   var buf = doc.getZip().generate({ type: "nodebuffer" });
 
-  const file = path.resolve(
-    __dirname,
-    `../templates/${data.firstName}${data.lastName}@${data.code}.docx`
-  );
+  const fileName = `${data.firstName}${data.lastName}@${data.code}.docx`;
+
+  const file = path.resolve(__dirname, `../templates/${fileName}`);
 
   // buf is a nodejs buffer, you can either write it to a file or do anything else with it.
   fs.writeFileSync(file, buf);
 
-  setTimeout(() => deleteFile(file), 60000);
+  const remoteFile = storage.bucket(srcBucket).file(`outputs/${fileName}`);
 
-  res.send(file);
+  fs.createReadStream(file)
+    .pipe(remoteFile.createWriteStream())
+    .on("error", (err) => {
+      console.log(err);
+      res.send(err);
+    })
+    .on("finish", () => {
+      console.log("finish!");
+      res.send(
+        `https://storage.googleapis.com/newton-melbourne/outputs/${fileName}`
+      );
+      setTimeout(() => {
+        deleteFile(file);
+        deleteRemotefile(fileName);
+      }, 30000);
+    });
 });
 
 module.exports = router;
